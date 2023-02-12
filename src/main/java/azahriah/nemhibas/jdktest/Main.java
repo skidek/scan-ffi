@@ -5,7 +5,6 @@ import azahriah.nemhibas.jdktest.natives.windows.kernel32._MEMORY_BASIC_INFORMAT
 import jdk.incubator.foreign.*;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
@@ -24,7 +23,7 @@ public class Main {
             .min(Comparator.comparingDouble(proc -> proc.info().startInstant().get().getEpochSecond()));
 
         if (process.isEmpty()) {
-            System.out.println("Vagyis nem... biztos, hogy elindítottad a launchert?");
+            System.out.println("[!] The launcher has not started.");
             return;
         }
 
@@ -68,14 +67,14 @@ public class Main {
                                     if (Kernel32.ReadProcessMemory(handle, readPointer, buffer, JSON_BUFFER_SIZE, MemoryAddress.NULL) != 0) {
                                         bufferString = new String(buffer.toByteArray(), StandardCharsets.US_ASCII);
 
-                                        int end_idx = bufferString.indexOf(",\"stats");
-                                        int start_idx = bufferString.indexOf("me\":\"");
+                                        int endIdx = bufferString.indexOf(",\"stats");
+                                        int startIdx = bufferString.indexOf("me\":\"");
 
-                                        if (end_idx == -1) end_idx = bufferString.indexOf(",\"skins");
+                                        if (endIdx == -1) endIdx = bufferString.indexOf(",\"skins");
 
-                                        if (start_idx == -1 || end_idx == -1) continue;
+                                        if (startIdx == -1 || endIdx == -1) continue;
 
-                                        return "\"userna"+bufferString.substring(start_idx, end_idx);
+                                        return "\"userna"+bufferString.substring(startIdx, endIdx);
                                     }
                                 }
                             }
