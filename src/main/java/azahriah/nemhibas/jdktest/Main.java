@@ -5,30 +5,36 @@ import azahriah.nemhibas.jdktest.natives.windows.kernel32._MEMORY_BASIC_INFORMAT
 import jdk.incubator.foreign.*;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Comparator;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class Main {
-    private static final int CHUNK_SIZE = 512;
+    private static final int CHUNK_SIZE = 128;
+    private static final int JSON_BUFFER_SIZE = 256;
 
     public static void main(String[] args) {
         System.out.println("Porog a fornettigyar");
         ExecutorService executor = Executors.newFixedThreadPool(8);
 
-        ProcessHandle.allProcesses()
-                .filter(proc -> proc.info().command().orElse("").toLowerCase().contains("fyremc"))
-                .sorted(Comparator.comparingDouble(proc->proc.info().startInstant().get().getNano()))
-                .limit(1)
-                .forEach(proc -> {
-                    executor.execute(() -> {
-                        String res = tryFindAccessToken(proc.pid());
-                        if (!res.isEmpty()) {
-                            System.out.println("[!] Found something in " + proc.pid() + " (P): " + res.split("\0")[0]);
-                        }
-                    });
-                });
+        Optional<ProcessHandle> process = ProcessHandle.allProcesses()
+            .filter(proc -> proc.info().command().orElse("").toLowerCase().contains("fyremc"))
+            .min(Comparator.comparingDouble(proc -> proc.info().startInstant().get().getEpochSecond()));
 
+        if (process.isEmpty()) {
+            System.out.println("Vagyis nem... biztos, hogy elindítottad a launchert?");
+            return;
+        }
+
+        ProcessHandle proc = process.get();
+        executor.execute(() -> {
+            String res = tryFindAccessToken(proc.pid());
+            if (!res.isEmpty()) {
+                System.out.println("[!] Found something in " + proc.pid() + " (P): " + res.split("\0")[0]);
+            }
+        });
         executor.shutdown();
     }
 
@@ -55,8 +61,22 @@ public class Main {
 
                             if (Kernel32.ReadProcessMemory(handle, readPointer, buffer, CHUNK_SIZE, MemoryAddress.NULL) != 0) {
                                 String bufferString = new String(buffer.toByteArray(), StandardCharsets.US_ASCII);
-                                if (bufferString.contains("{\"acc")){
-                                    return bufferString.substring(bufferString.indexOf("{"), bufferString.indexOf("}")+2);
+
+                                if (bufferString.contains("\",\"uuid\":\"")) {
+                                    buffer = segmentAllocator.allocateArray(CLinker.C_CHAR, JSON_BUFFER_SIZE);
+
+                                    if (Kernel32.ReadProcessMemory(handle, readPointer, buffer, JSON_BUFFER_SIZE, MemoryAddress.NULL) != 0) {
+                                        bufferString = new String(buffer.toByteArray(), StandardCharsets.US_ASCII);
+
+                                        int end_idx = bufferString.indexOf(",\"stats");
+                                        int start_idx = bufferString.indexOf("me\":\"");
+
+                                        if (end_idx == -1) end_idx = bufferString.indexOf(",\"skins");
+
+                                        if (start_idx == -1 || end_idx == -1) continue;
+
+                                        return "\"userna"+bufferString.substring(start_idx, end_idx);
+                                    }
                                 }
                             }
                         }
