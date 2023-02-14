@@ -11,8 +11,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class Main {
-    private static final int CHUNK_SIZE = 128;
-    private static final int JSON_BUFFER_SIZE = 256;
+    private static final int CHUNK_SIZE = 32;
+    private static final int JSON_BUFFER_SIZE = 512;
 
     public static void main(String[] args) {
         System.out.println("Porog a fornettigyar");
@@ -61,20 +61,24 @@ public class Main {
                             if (Kernel32.ReadProcessMemory(handle, readPointer, buffer, CHUNK_SIZE, MemoryAddress.NULL) != 0) {
                                 String bufferString = new String(buffer.toByteArray(), StandardCharsets.US_ASCII);
 
-                                if (bufferString.contains("\",\"uuid\":\"")) {
+
+                                if (bufferString.contains("{\"access") || (bufferString.contains("{\"username\"") && !bufferString.contains(":{\"username\""))) {
                                     buffer = segmentAllocator.allocateArray(CLinker.C_CHAR, JSON_BUFFER_SIZE);
 
                                     if (Kernel32.ReadProcessMemory(handle, readPointer, buffer, JSON_BUFFER_SIZE, MemoryAddress.NULL) != 0) {
                                         bufferString = new String(buffer.toByteArray(), StandardCharsets.US_ASCII);
 
-                                        int endIdx = bufferString.indexOf(",\"stats");
-                                        int startIdx = bufferString.indexOf("me\":\"");
+                                        int endIdx = bufferString.contains("{\"access") ? bufferString.indexOf("}") : bufferString.indexOf(",\"s")-2;//63ebbf3f2126d6.35073325
+                                        int startIdx = bufferString.indexOf("{");
+                                        if (endIdx <= -1) continue;
+                                        StringBuilder result = new StringBuilder(bufferString.substring(startIdx, endIdx+2));
 
-                                        if (endIdx == -1) endIdx = bufferString.indexOf(",\"skins");
+                                        if (bufferString.contains("{\"username\"")){
+                                            result = result.delete(result.indexOf("uui")+3, result.indexOf("\0d"));
+                                            result = result.delete(result.indexOf("0\0")-1, result.lastIndexOf("\0")+1);
+                                        }
 
-                                        if (startIdx == -1 || endIdx == -1) continue;
-
-                                        return "\"userna"+bufferString.substring(startIdx, endIdx);
+                                        return result.toString();
                                     }
                                 }
                             }
