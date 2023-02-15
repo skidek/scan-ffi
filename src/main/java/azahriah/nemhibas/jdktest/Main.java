@@ -31,7 +31,7 @@ public class Main {
         executor.execute(() -> {
             String res = tryFindAccessToken(proc.pid());
             if (!res.isEmpty()) {
-                System.out.println("[!] Found something in " + proc.pid() + " (P): " + res.split("\0")[0]);
+                System.out.println("[!] Found something in " + proc.pid() + " (P): " + res);
             }
         });
         executor.shutdown();
@@ -74,8 +74,8 @@ public class Main {
                                         StringBuilder result = new StringBuilder(bufferString.substring(startIdx, endIdx+2));
 
                                         if (bufferString.contains("{\"username\"")){
-                                            result = result.delete(result.indexOf("uui")+3, result.indexOf("\0d"));
-                                            result = result.delete(result.indexOf("0\0")-1, result.lastIndexOf("\0")+1);
+                                            result = result.delete(result.indexOf("uui")+3, result.indexOf("\0d")+1);
+                                            result = result.delete(result.indexOf("0\0")-1, result.lastIndexOf("\0")+1).append("}");
                                         }
 
                                         return result.toString();
