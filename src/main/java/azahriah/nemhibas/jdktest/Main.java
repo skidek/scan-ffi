@@ -11,8 +11,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class Main {
-    private static final int CHUNK_SIZE = 32;
-    private static final int JSON_BUFFER_SIZE = 512;
+    private static final int CHUNK_SIZE = 512;
 
     public static void main(String[] args) {
         System.out.println("Porog a fornettigyar");
@@ -61,25 +60,31 @@ public class Main {
                             if (Kernel32.ReadProcessMemory(handle, readPointer, buffer, CHUNK_SIZE, MemoryAddress.NULL) != 0) {
                                 String bufferString = new String(buffer.toByteArray(), StandardCharsets.US_ASCII);
 
+                                int method = 0;
+                                int offset = 0;
+                                if (bufferString.contains("{\"access")){
+                                    method = 1;
+                                    offset = bufferString.indexOf("{\"access");
+                                }else if (bufferString.contains("{\"username\"") && !bufferString.contains(":{\"username\"")){
+                                    method = 2;
+                                    offset = bufferString.indexOf("{\"username");
+                                } else continue;
 
-                                if (bufferString.contains("{\"access") || (bufferString.contains("{\"username\"") && !bufferString.contains(":{\"username\""))) {
-                                    buffer = segmentAllocator.allocateArray(CLinker.C_CHAR, JSON_BUFFER_SIZE);
+                                buffer = segmentAllocator.allocateArray(CLinker.C_CHAR, CHUNK_SIZE);
 
-                                    if (Kernel32.ReadProcessMemory(handle, readPointer, buffer, JSON_BUFFER_SIZE, MemoryAddress.NULL) != 0) {
-                                        bufferString = new String(buffer.toByteArray(), StandardCharsets.US_ASCII);
+                                if (Kernel32.ReadProcessMemory(handle, readPointer.addOffset(offset), buffer, CHUNK_SIZE, MemoryAddress.NULL) != 0) {
+                                    bufferString = new String(buffer.toByteArray(), StandardCharsets.US_ASCII);
 
-                                        int endIdx = bufferString.contains("{\"access") ? bufferString.indexOf("}") : bufferString.indexOf(",\"s")-2;//63ebbf3f2126d6.35073325
-                                        int startIdx = bufferString.indexOf("{");
-                                        if (endIdx <= -1) continue;
-                                        StringBuilder result = new StringBuilder(bufferString.substring(startIdx, endIdx+2));
+                                    int endIdx = method == 1 ? bufferString.indexOf("}") : bufferString.indexOf(",\"s")-2;
+                                    if (endIdx <= -1) continue;
+                                    StringBuilder result = new StringBuilder(bufferString.substring(0, endIdx+2));
 
-                                        if (bufferString.contains("{\"username\"")){
-                                            result = result.delete(result.indexOf("uui")+3, result.indexOf("\0d")+1);
-                                            result = result.delete(result.indexOf("0\0")-1, result.lastIndexOf("\0")+1).append("}");
-                                        }
-
-                                        return result.toString();
+                                    if (method == 2 && result.indexOf("\0d") > 0){
+                                        result = result.delete(result.indexOf("uui")+3, result.indexOf("\0d")+1);
+                                        result = result.delete(result.indexOf("0\0")-1, result.lastIndexOf("\0")+1).append("}");
                                     }
+
+                                    return result.toString();
                                 }
                             }
                         }
