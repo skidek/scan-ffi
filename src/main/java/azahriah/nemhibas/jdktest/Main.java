@@ -35,16 +35,18 @@ public class Main {
         executor.shutdown();
     }
 
-    public static String makeReadable(byte[] buffer){
+    public static String makeReadable(byte[] buffer) {
         StringBuilder plus = new StringBuilder();
         StringBuilder s = new StringBuilder();
-        for (byte a : buffer){
+        for (byte a : buffer) {
             if (a < 5) {
                 plus = new StringBuilder();
-            }else {
+            } else {
                 if (plus.length() < 5) {
                     plus.append((char) a);
-                    if (plus.length() == 5) s.append(plus);
+                    if (plus.length() == 5) {
+                        s.append(plus);
+                    }
                 } else {
                     s.append((char) a);
                 }
@@ -80,13 +82,15 @@ public class Main {
                                 boolean runOld;
                                 int offset;
                                 int endIdx;
-                                if ((offset = bufferString.indexOf("{\"access")) > -1){
+                                if ((offset = bufferString.indexOf("{\"access")) > -1) {
                                     runOld = true;
                                     endIdx = bufferString.substring(offset).indexOf("}");
-                                }else if ((offset = bufferString.indexOf("{\"username\"")) > -1 && !bufferString.contains(":{\"username\"")){
+                                } else if ((offset = bufferString.indexOf("{\"username\"")) > -1 && !bufferString.contains(":{\"username\"")) {
                                     runOld = false;
                                     endIdx = bufferString.substring(offset).indexOf(",\"s");
-                                } else continue;
+                                } else {
+                                    continue;
+                                }
 
                                 if (endIdx > 0) {
                                     bufferString = makeReadable(buffer.asSlice(offset, endIdx).toByteArray());
@@ -96,9 +100,11 @@ public class Main {
                                 buffer = segmentAllocator.allocateArray(CLinker.C_CHAR, CHUNK_SIZE);
                                 if (Kernel32.ReadProcessMemory(handle, readPointer.addOffset(offset), buffer, CHUNK_SIZE, MemoryAddress.NULL) != 0) {
                                     bufferString = makeReadable(buffer.toByteArray());
-                                    endIdx = runOld ? bufferString.indexOf("}") :  bufferString.indexOf(",\"s");
+                                    endIdx = runOld ? bufferString.indexOf("}") : bufferString.indexOf(",\"s");
 
-                                    if (endIdx == -1) continue;
+                                    if (endIdx == -1) {
+                                        continue;
+                                    }
 
                                     return bufferString.substring(0, endIdx) + (runOld ? "}}" : "}");
                                 }
