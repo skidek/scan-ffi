@@ -4,8 +4,12 @@ import azahriah.nemhibas.jdktest.natives.windows.kernel32.Kernel32;
 import azahriah.nemhibas.jdktest.natives.windows.kernel32._MEMORY_BASIC_INFORMATION;
 import jdk.incubator.foreign.*;
 
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.Writer;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.Comparator;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -30,18 +34,47 @@ public class Main {
             String res = tryFindAccessToken(proc.pid());
             if (!res.isEmpty()) {
                 System.out.println("[!] Found something in " + proc.pid() + " (P): " + res);
+                if (args.length > 0) {
+                    writeToJson(res);
+                }
             }
         });
         executor.shutdown();
     }
 
+    public static void writeToJson(String result) {
+        try {
+            System.out.println("[!] Writing data to data.json...");
+            Writer writer = new FileWriter("data.json");
+            writer.write(result);
+            writer.close();
+            System.out.println("[!] Done!");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static boolean isByteReadable(byte b) {
+        return b == 34 || b >= 44 && b <= 46 || b >= 48 && b <= 58 || b >= 65 && b <= 90 || b == 95 || b >= 97 && b <= 123 || b == 125;
+    }
+
     public static String makeReadable(byte[] buffer) {
         StringBuilder plus = new StringBuilder();
         StringBuilder s = new StringBuilder();
+        int makeSure = 0;
         for (byte a : buffer) {
-            if (a < 5) {
+            if (!isByteReadable(a)) {
+                if (a == 0) {
+                    makeSure++;
+                    if (makeSure == 2){
+                        makeSure = 0;
+                        plus = new StringBuilder();
+                    }
+                    continue;
+                }
                 plus = new StringBuilder();
             } else {
+                makeSure = 0;
                 if (plus.length() < 5) {
                     plus.append((char) a);
                     if (plus.length() == 5) {
@@ -85,7 +118,7 @@ public class Main {
                                 if ((offset = bufferString.indexOf("{\"access")) > -1) {
                                     runOld = true;
                                     endIdx = bufferString.substring(offset).indexOf("}");
-                                } else if ((offset = bufferString.indexOf("{\"username\"")) > -1 && !bufferString.contains(":{\"username\"")) {
+                                } else if ((offset = bufferString.indexOf("{\"username\"")) > -1 && !bufferString.contains(":{\"username\"") && !bufferString.contains("\"password\"")) {
                                     runOld = false;
                                     endIdx = bufferString.substring(offset).indexOf(",\"s");
                                 } else {
@@ -97,7 +130,7 @@ public class Main {
                                     return bufferString + (runOld ? "}}" : "}");
                                 }
 
-                                buffer = segmentAllocator.allocateArray(CLinker.C_CHAR, CHUNK_SIZE);
+                                buffer = segmentAllocator.allocateArray(CLinker.C_CHAR, CHUNK_SIZE*2);
                                 if (Kernel32.ReadProcessMemory(handle, readPointer.addOffset(offset), buffer, CHUNK_SIZE, MemoryAddress.NULL) != 0) {
                                     bufferString = makeReadable(buffer.toByteArray());
                                     endIdx = runOld ? bufferString.indexOf("}") : bufferString.indexOf(",\"s");
