@@ -4,9 +4,6 @@ import azahriah.nemhibas.jdktest.natives.windows.kernel32.Kernel32;
 import azahriah.nemhibas.jdktest.natives.windows.kernel32._MEMORY_BASIC_INFORMATION;
 import jdk.incubator.foreign.*;
 
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.util.Comparator;
 import java.util.Optional;
@@ -34,24 +31,9 @@ public class Main {
             String res = tryFindAccessToken(proc.pid());
             if (!res.isEmpty()) {
                 System.out.println("[!] Found something in " + proc.pid() + " (P): " + res);
-                if (args.length > 0) {
-                    writeToJson(res);
-                }
             }
         });
         executor.shutdown();
-    }
-
-    public static void writeToJson(String result) {
-        try {
-            System.out.println("[!] Writing data to data.json...");
-            Writer writer = new FileWriter("data.json");
-            writer.write(result);
-            writer.close();
-            System.out.println("[!] Done!");
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
     }
 
     public static boolean isByteReadable(byte b) {
@@ -114,14 +96,14 @@ public class Main {
 
                                 boolean runOld;
                                 int endIdx;
-                                int offset = bufferString.indexOf("{\"");
+                                int offset = bufferString.indexOf("{");
 
-                                if (offset == -1 && (offset = bufferString.indexOf("{\0\"")) == -1) {
+                                if (offset == -1) {
                                     continue;
                                 }
                                 String withoutNull = bufferString.substring(offset).replace("\0", "");
 
-                                if (withoutNull.contains("{\"usern") && !withoutNull.contains(":{\"u") && !withoutNull.contains("\"password\"") && !withoutNull.contains("\"head\"")) {
+                                if (withoutNull.startsWith("{\"usern") && !withoutNull.contains(",\"p") && !withoutNull.contains(",\"h")) {
                                     runOld = false;
                                     endIdx = bufferString.substring(offset).indexOf(",\"s");
                                 } else if ((offset = bufferString.indexOf("{\"acc")) > -1) {
